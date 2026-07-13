@@ -51,7 +51,7 @@ void imu_init(void) {
     USBSerial.printf("#INIT Status:%d\n\r", st);
     if (st != 0) {
         USBSerial.printf("BMI270 INIT Fail!\n\r");
-        while (1);
+        return;
     }
     USBSerial.printf("#Chip ID DEV:%02X\n\r", Bmi270.chip_id);
     USBSerial.printf("#APP_STATUS:%02X\n\r", Bmi270.aps_status);

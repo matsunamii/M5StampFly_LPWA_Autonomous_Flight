@@ -69,18 +69,20 @@ void telemetry(void) {
 }
 
 void telemetry_sequence(void) {
-    uint8_t senddata[MAXINDEX];
+    uint8_t senddata[MAXINDEX];// 送信データバッファ確保　MAXINDEX = 14*4+2 = 58バイト
 
     switch (Telem_mode) {
         case 1:
-            make_telemetry_data(senddata);
-            // Send !
+            make_telemetry_data(senddata);// センサ値をバイト列にパック
+            // 実際に送信実行
             if (telemetry_send(&peerInfo[TELEM], senddata, sizeof(senddata)) == 1){
-                esp_led(0x330000, 1);  // Telemetory Reciver OFF
+                // 戻り値が 1 = 送信失敗（受信側がない）→LED が赤点灯
+                esp_led(0x330000, 1);
                 //USBSerial.printf("NG Mode=%d\n\r", StampFly.flag.mode);
             }
             else{
-                esp_led(0x003300, 1);  // Telemetory Reciver ON
+                // 戻り値が 0 = 送信成功（受信側が受け取った）→LED が緑点灯
+                esp_led(0x003300, 1);
                 //USBSerial.printf("OK Mode=%d\n\r", StampFly.flag.mode);
             }
             // Telem_mode = 2;

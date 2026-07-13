@@ -60,16 +60,23 @@ typedef struct {
     float q3;
 } quat_t;
 
-typedef struct {
-    uint16_t distance;
-    uint16_t cnt;
-} distance_t;
+//Sensor data
+//extern volatile float Ax,Ay,Az,Wp,Wq,Wr,Mx,My,Mz,Mx0,My0,Mz0,Mx_ave,My_ave,Mz_ave;
+extern volatile float Roll_angle, Pitch_angle, Yaw_angle;
+extern volatile float Roll_rate, Pitch_rate, Yaw_rate;
+extern volatile float Altitude2;
+extern volatile float Alt_velocity;
+extern uint8_t OverG_flag;
+extern float roll_angle_offset;
+extern float pitch_angle_offset;
+
 
 uint8_t scan_i2c(void);
 void sensor_init(void);
 void sensor_reset_offset(void);
 void ahrs_reset(void);
-void sensor_calc_offset_avarage(void);
+void sensor_calc_offset_rate_avarage(void);
+void sensor_calc_offset_angle_avarage(void);
 void sensor_read(sensor_value_t* data);
 void bottom_tof_read(sensor_value_t* data);
 

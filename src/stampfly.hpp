@@ -10,6 +10,9 @@
 #define FLIGHT_MODE     2
 #define PARKING_MODE    3
 
+#define ANGLECONTROL 0
+#define RATECONTROL 1
+
 //Battery
 #define BATTERY_VOLTAGE (3.7)
 #define POWER_LIMIT 3.34
@@ -26,6 +29,9 @@ typedef struct{
     float pitch_rate;
     float yaw_rate;
     float roll_angel;
+    float dir_x;
+    float dir_y;
+    float dir_z;
     float pitch_angle;
     float yaw_angle;
     float voltage;

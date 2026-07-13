@@ -1,93 +1,81 @@
-# M5StampFly Skeleton
+# M5StampFly LPWA Autonomous Flight Prototype
 
-M5Stack社が発売した StampFly と AtomJoyStick のファームウェアの骨組みを提供、あとは好きにしてね。
+M5StampFlyを用いた、LPWAによる遠隔指令と自律移動を目的としたドローン制御プログラムです。
 
-## 方針
+本プロジェクトは、M5Fly-kanazawaが公開している「M5StampFly Skeleton」をベースに、RCコントローラに依存しない自律飛行制御へ拡張しています。
 
-- モータ、IMU、姿勢推定とToFのAPIは提供
-- 制御用の400Hzの周期関数が用意されているので、そちらに独自のコードを加えることで、飛行プログラムが気軽にできるかも
-- AtomJoyStickと組み合わせてテレメトリーでのログ機能を提供
+## 概要
 
-## ToDo
+災害時や山間部など、Wi-Fiや携帯通信を利用しにくい環境において、LPWA通信を用いてドローンへ移動指令や目標位置を送信し、自律的に移動させることを目的としています。
 
-- 要望があるならオプティカルフローや気圧などのAPIも提供
-- 使い方の資料や講習会の実施
+姿勢制御には、角度制御と角速度制御を組み合わせたカスケード制御を使用しています。
 
-## 対応するコントローラ
-
-- こうへい版シンプルファームウエア https://github.com/M5Fly-kanazawa/Simple_StampFly_Joy
-
-## どこから読めばいいのか
-
-### まずは"main_loop.cpp"から
-"main_loop.cpp"の中のvoid "loop_400Hz(void)"関数から読んでみてください。ここにオリジナルコードを追加していくことになると思います。
-
-### 次は"sensor.cpp"
-センサの処理が書かれているので"sensor.cpp"も重要です。
-
-## Telemetry
-テレメトリの出力は左から
-時間、制御周期、ロール角(rad)、ピッチ角（rad）、ヨー角（rad）、ロール角速度（rad/s）、ピッチ角速度（rad/s）、ヨー角速度（rad/s）、X軸加速度（G）、Y軸加速度（G）、Z軸加速度（G）、ロール目標、ピッチ目標、ヨー目標
-
-## stampfly_t構造体
-```
-typedef struct{
-    sensor_value_t sensor;
-    flag_t flag;
-    counter_t counter;
-    control_ref_t ref;
-    times_t times;
-}stampfly_t;
-```
-この構造体である'StampFly'が定義されています.
-
-### sensor_value_t構造体
-```
-typedef struct{
-    float accx;
-    float accy;
-    float accz;
-    float roll_rate;
-    float pitch_rate;
-    float yaw_rate;
-    float roll_angel;
-    float pitch_angle;
-    float yaw_angle;
-    float voltage;
-    uint16_t bottom_tof_range;
-}sensor_value_t;
-
+```text
+目標角度
+   ↓
+角度制御
+   ↓
+目標角速度
+   ↓
+角速度制御
+   ↓
+モータ出力
 ```
 
-目標が角度なのか角速度なのかは適宜、プログラマーが決めれば良い
+高度制御では、下向きToFセンサから取得した高度と高度変化量を使用して、推力指令を生成します。
 
-## 参考資料
+## 主なファイル
 
-- StampFly & Atom ジョイスティック ファームウェア書き込みガイド https://docs.m5stack.com/ja/guide/hobby_kit/stampfly/stamply_firmware
-- StampFlyの制御プログラムのビルドと書き込み https://rikei-tawamure.com/entry/2023/11/19/101426
+### `src/main_loop.cpp`
 
- 
+周期制御処理を実行します。
+姿勢制御、角速度制御、高度制御、モータ出力などの主要な飛行制御処理が記述されています。
 
-### M5 Stamp Fly関連
+### `src/sensor.cpp`
 
-- オリジナルファームウェア https://github.com/m5stack/M5StampFly
-- こうへい版ファームウエア https://github.com/M5Fly-kanazawa/M5StampFly
+BMI270、BMM150、ToFセンサおよび電圧センサから値を取得し、姿勢角や高度などを計算します。
 
-|仕様|概要|
-|----|----|
-|M5StampS3|ESP32-S3@Xtensa LX7、8 MB-FLASH、Wi-Fi、OTG/CDC support|
-|距離センサ|VL53L3CXV0DH/1 (0x52) @ 最大3m|
-|オプティカルフローセンサ|PMW3901MB-TXQT|
-|気圧センサ|BMP280（0x76）@ 300-1100 hPa|
-|3軸磁力センサ|BMM150（0x10)|
-|6軸IMUセンサ|BMI270|
-|バッテリー|300 mAh 高電圧リチウムポリマーバッテリ（LiHV）|
-|電流電圧計|INA3221AIRGVR（0x40）|
-|ブザー|Built-in Buzzer @ 5020|
-|Product Size|107 x 107 x 30 mm|
-|Product Weight|36.2 g|
+### `src/control.cpp`
 
-### M5 Atom JoyStick関連
+角度制御、角速度制御、高度制御などの制御処理を実装します。
 
-- オリジナルファームウェア https://github.com/m5stack/Atom-JoyStick
-- こうへい版シンプルファームウエア https://github.com/M5Fly-kanazawa/Simple_StampFly_Joy
+### `lib/BMM150_SensorAPI`
+
+BMM150磁気センサを制御するためのライブラリです。
+
+## 使用ハードウェア
+
+| 機器        | 概要                  |
+| --------- | ------------------- |
+| M5StampS3 | ESP32-S3、8 MB Flash |
+| BMI270    | 6軸IMU               |
+| BMM150    | 3軸磁気センサ             |
+| VL53L3CX  | 下向きToF距離センサ         |
+| PMW3901   | オプティカルフローセンサ        |
+| BMP280    | 気圧センサ               |
+| INA3221   | 電流・電圧センサ            |
+| LiHVバッテリー | 300 mAh             |
+
+## 開発環境
+
+* Visual Studio Code
+* PlatformIO
+* Arduino Framework
+* M5StampFly
+* ESP32-S3
+
+## ベースプロジェクト
+
+本プロジェクトは、以下のM5StampFly Skeletonをベースに開発しています。
+
+* M5Fly-kanazawa / M5StampFly Skeleton
+* M5Stack StampFly
+* Kouhei Ito氏およびM5Stack社によるソースコード
+
+元のライセンス表記および著作権表記は、各ソースファイルと`LICENSE`ファイルに従います。
+
+## ライセンス
+
+本プロジェクトに含まれる元プログラムはMIT Licenseで公開されています。
+
+元プログラムの著作権表示およびライセンス表示は保持してください。

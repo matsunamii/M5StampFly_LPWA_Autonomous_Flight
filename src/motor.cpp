@@ -28,7 +28,7 @@
 
 // 制御周期
 // Control period
-float Control_period = 0.0025f;  // 400Hz
+extern float Control_period;
 
 void motor_set_duty_fr(float duty) {
     ledcWrite(CH_FRONT_RIGHT, (uint32_t)(255 * duty));

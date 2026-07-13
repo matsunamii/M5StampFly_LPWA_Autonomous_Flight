@@ -27,14 +27,14 @@
 #include "pid.hpp"
 
 PID::PID() {
-    m_kp           = 1.0e-8f;
-    m_ti           = 1.0e8f;
-    m_td           = 0.0f;
-    m_eta          = 0.01;
-    m_integral     = 0.0f;
-    m_differential = 0.0f;
-    m_err          = 0.0f;
-    m_h            = 0.01f;
+    m_kp           = 1.0e-8f;//比例ゲイン
+    m_ti           = 1.0e8f;//積分時間
+    m_td           = 0.0f;//微分時間
+    m_eta          = 0.01;//微分のローパス（不完全微分）係数。微分ノイズを抑える調整パラメータ
+    m_integral     = 0.0f;//積分内部状態の初期値
+    m_differential = 0.0f;//微分内部状態の初期値
+    m_err          = 0.0f;//1サンプル前との誤差
+    m_h            = 0.01f;//サンプリング時間
 }
 
 void PID::set_parameter(float kp, float ti, float td, float eta, float h) {
@@ -65,7 +65,12 @@ void PID::set_error(float err) {
 }
 
 float PID::update(float err, float h) {
-    float d;
+    if (!isfinite(h) || h <= 0.0f) {
+        h = m_h;
+        if (!isfinite(h) || h <= 0.0f) {
+            h = 0.0025f;
+        }
+    }
     m_h = h;
 
     // 積分
@@ -90,11 +95,17 @@ void Filter::reset(void) {
 }
 
 void Filter::set_parameter(float T, float h) {
-    m_T = T;
-    m_h = h;
+    m_T = T;//時定数
+    m_h = h;//サンプリング時間
 }
 
 float Filter::update(float u, float h) {
+    if (!isfinite(h) || h <= 0.0f) {
+        h = m_h;
+        if (!isfinite(h) || h <= 0.0f) {
+            h = 0.0025f;
+        }
+    }
     m_h     = h;
     m_state = m_state * m_T / (m_T + m_h) + u * m_h / (m_T + m_h);
     m_out   = m_state;

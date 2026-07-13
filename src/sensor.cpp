@@ -24,6 +24,7 @@
  */
 
 #include "sensor.hpp"
+#include "mag.hpp"
 #include "imu.hpp"
 #include "tof.hpp"
 #include "stampfly.hpp"
@@ -33,10 +34,17 @@ Madgwick ahrs;
 INA3221 ina3221(INA3221_ADDR40_GND);  // Set I2C address to 0x40 (A0 pin -> GND)
 
 // Sensor data
-float ax, ay, az, gx, gy, gz;
+float ax, ay, az, gx, gy, gz, x, y, z;
 float roll_rate_offset, pitch_rate_offset, yaw_rate_offset;
+float roll_angle_offset, pitch_angle_offset;
 float sensor[16];
-uint16_t offset_counter = 0;
+volatile float Roll_angle=0.0f, Pitch_angle=0.0f, Yaw_angle=0.0f;
+volatile float Roll_rate, Pitch_rate, Yaw_rate;
+volatile float Altitude2 = 0.0f;
+volatile float Alt_velocity = 0.0f;
+uint8_t OverG_flag = 0;
+uint16_t rate_offset_counter = 0;
+uint16_t angle_offset_counter = 0;
 
 uint8_t scan_i2c() {
     USBSerial.println("I2C scanner. Scanning ...");
@@ -77,6 +85,7 @@ void sensor_init() {
         USBSerial.printf("Can not boot AtomFly2.\r\n");
         while (1);
     }
+    mag_init();
     tof_init();
     imu_init();
     ina3221.begin(&Wire1);
@@ -95,18 +104,26 @@ void sensor_init() {
     USBSerial.printf("Finish sensor init!\r\n");
 }
 
-void sensor_calc_offset_avarage(void) {
-    roll_rate_offset  = (offset_counter * roll_rate_offset  + gx) / (offset_counter + 1);
-    pitch_rate_offset = (offset_counter * pitch_rate_offset + gy) / (offset_counter + 1);
-    yaw_rate_offset   = (offset_counter * yaw_rate_offset   + gz) / (offset_counter + 1);
-    offset_counter++;
+void sensor_calc_offset_rate_avarage(void) {
+    roll_rate_offset  = (rate_offset_counter * roll_rate_offset  + gx) / (rate_offset_counter + 1);
+    pitch_rate_offset = (rate_offset_counter * pitch_rate_offset + gy) / (rate_offset_counter + 1);
+    yaw_rate_offset   = (rate_offset_counter * yaw_rate_offset   + gz) / (rate_offset_counter + 1);
+    rate_offset_counter++;
+}
+void sensor_calc_offset_angle_avarage(void) {
+    roll_angle_offset = (angle_offset_counter * roll_angle_offset + Roll_angle) / (angle_offset_counter + 1);
+    pitch_angle_offset = (angle_offset_counter * pitch_angle_offset + Pitch_angle) / (angle_offset_counter + 1);
+    angle_offset_counter++;
 }
 
 void sensor_read(sensor_value_t* data) {
-    float acc_x, acc_y, acc_z, roll_rate, pitch_rate, yaw_rate;
+    float acc_x, acc_y, acc_z, roll_rate, pitch_rate, yaw_rate, dir_x, dir_y, dir_z;
     float roll_angle, pitch_angle, yaw_angle;
     uint16_t bottom_tof_range;
     float voltage;
+    static float previous_altitude2 = 0.0f;
+    static uint16_t debug_print_counter = 0;
+    constexpr uint16_t debug_print_interval = 100;
 
     // 以下では航空工学の座標軸の取り方に従って
     // X軸：前後（前が正）左肩上がりが回転の正
@@ -126,28 +143,70 @@ void sensor_read(sensor_value_t* data) {
     gx =   imu_get_gyro_y();
     gy =   imu_get_gyro_x();
     gz = - imu_get_gyro_z();
+    mag_update();
 
-    if (StampFly.flag.mode > AVERAGE_MODE) {
+    if (StampFly.flag.mode >= AVERAGE_MODE) {
         acc_x = ax;
         acc_y = ay;
         acc_z = az;
         roll_rate  = gx - roll_rate_offset;
         pitch_rate = gy - pitch_rate_offset;
         yaw_rate   = gz - yaw_rate_offset;
-
+        // Align magnetometer axes with transformed accel/gyro axes
+        dir_x = imu_get_mag_y();
+        dir_y = imu_get_mag_x();
+        dir_z = - imu_get_mag_z();
+        
+        if (mag_available()) {
+            ahrs.update( roll_rate  * (float)RAD_TO_DEG, 
+                         pitch_rate * (float)RAD_TO_DEG,
+                         yaw_rate   * (float)RAD_TO_DEG, 
+                         -acc_x, 
+                         -acc_y,
+                         -acc_z,
+                         dir_x,
+                         dir_y,
+                         dir_z);
+        } else {
         ahrs.updateIMU( roll_rate  * (float)RAD_TO_DEG, 
                         pitch_rate * (float)RAD_TO_DEG,
                         yaw_rate   * (float)RAD_TO_DEG, 
                         -acc_x, 
                         -acc_y,
                         -acc_z);
+        }
 
         roll_angle  = ahrs.getRoll()  * (float)DEG_TO_RAD;
         pitch_angle = ahrs.getPitch() * (float)DEG_TO_RAD;
         yaw_angle   = ahrs.getYaw()   * (float)DEG_TO_RAD;
+
+        Roll_angle = roll_angle;
+        Pitch_angle = pitch_angle;
+        Yaw_angle = yaw_angle;
+        Roll_rate = roll_rate;
+        Pitch_rate = pitch_rate;
+        Yaw_rate = yaw_rate;
     }
     // Battery voltage check
     voltage   = ina3221.getVoltage(INA3221_CH2);
+
+    if (ToF_bottom_data_ready_flag) {
+        ToF_bottom_data_ready_flag = 0;
+        bottom_tof_range = tof_bottom_get_range();
+    } else {
+        bottom_tof_range = data->bottom_tof_range;
+    }
+    Altitude2 = (float)bottom_tof_range * 0.001f;
+    if (StampFly.times.interval_time > 0.0f) {
+        Alt_velocity = (Altitude2 - previous_altitude2) / StampFly.times.interval_time;
+    } else {
+        Alt_velocity = 0.0f;
+    }
+    previous_altitude2 = Altitude2;
+
+    if (acc_x * acc_x + acc_y * acc_y + acc_z * acc_z > 9.0f) {
+        OverG_flag = 1;
+    }
 
     // set value
     data->accx = acc_x;
@@ -156,16 +215,34 @@ void sensor_read(sensor_value_t* data) {
     data->roll_rate = roll_rate;
     data->pitch_rate = pitch_rate;
     data->yaw_rate = yaw_rate;
+    data->dir_x = dir_x;
+    data->dir_y = dir_y;
+    data->dir_z = dir_z;
     data->roll_angel = roll_angle;
     data->pitch_angle = pitch_angle;
     data->yaw_angle = yaw_angle;
     data->voltage = voltage;
+    data->bottom_tof_range = bottom_tof_range;
+    
+    // // Periodic debug output: Roll/Pitch/Yaw (deg), accel XYZ (m/s^2), |acc|, battery
+    // if ((debug_print_counter % debug_print_interval) == 0) {
+    //     float acc_norm = sqrtf(data->accx * data->accx + data->accy * data->accy + data->accz * data->accz);
+    //     USBSerial.printf("R:%.2f P:%.2f Y:%.2f  ax:%.3f ay:%.3f az:%.3f V:%.3f\n\r",
+    //         Roll_angle * (float)RAD_TO_DEG,
+    //         Pitch_angle * (float)RAD_TO_DEG,
+    //         Yaw_angle * (float)RAD_TO_DEG,
+    //         data->accx,
+    //         data->accy,
+    //         data->accz,
+    //         data->voltage);
+    // }
+    debug_print_counter++;
 
     return;
 }
 
 void bottom_tof_read(sensor_value_t* data) {
-    uint16_t range; 
+    uint16_t range = data->bottom_tof_range;
     if (ToF_bottom_data_ready_flag) {
         //dcnt = 0u;
         ToF_bottom_data_ready_flag = 0;
